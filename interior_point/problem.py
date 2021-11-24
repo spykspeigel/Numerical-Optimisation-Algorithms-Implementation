@@ -105,7 +105,6 @@ class interior_point_problem:
         vk = self.vk 
         sk = self.sk
         for i in range(0,self.max_iter):
-            print(i)
 
             g_e     = self.G(xk)
             h_e     = self.H(xk)
@@ -119,8 +118,7 @@ class interior_point_problem:
             Hh_e    = self.Hh(xk)
 
             Hl      = Hf_e + Hg_e*lk + Hh_e*vk
-            #print(Hl)
-            
+
             sk_diag = np.diag(sk)
             vk_diag = np.diag(vk)
             try:
@@ -132,13 +130,18 @@ class interior_point_problem:
             except:
                 vk_diag.resize([vk_diag.shape[0],1]) 
 
-            #2nd order KKT matrix
+
+            ##########################
+            # 2nd order KKT matrix
+            ##########################
             M = np.vstack([np.hstack([  Hl,  Jg_e.T,  Jh_e.T,     np.zeros([self.nv, self.ni])]),
                     np.hstack([Jg_e,   np.zeros([self.ne,self.ne]),	np.zeros([self.ne,self.ni]),	np.zeros([self.ne,self.ni])]),
                     np.hstack([Jh_e, np.zeros([self.ni,self.ne]),	 np.zeros([self.ni,self.ni]),	np.eye(self.ni)]),
                     np.hstack([np.zeros([self.ni,self.nv]), 	 np.zeros([self.ni,self.ne]),	sk_diag, vk_diag])])        
 
-            #Handling the case where the dimension of np.dot(Jg_e.T,lk) becomes (n,). It should be (n,1) to be handled properly by numpy
+            #################################################
+            ## Handling the case where the dimension of np.dot(Jg_e.T,lk) becomes (n,). It should be (n,1) to be handled properly by numpy
+            #################################################
             a=np.dot(Jg_e.T,lk)
             b=np.dot(Jh_e.T,vk)
             try:
@@ -150,6 +153,7 @@ class interior_point_problem:
                 b.shape[1]
             except:
                 b.resize([b.shape[0],1])
+            ###################################################
 
             # R rhs of the equation
             rhs = - np.vstack([a + Jf_e.T + b, 
@@ -158,67 +162,33 @@ class interior_point_problem:
                             np.dot(vk,sk) - self.tau ])
             
             z_step = np.dot(np.linalg.inv(M),rhs)
-            print(M)
-            #Lb = scl.cho_factor(M)
-            #z_step= scl.cho_solve(Lb, rhs)
-            print('_____________---')
-            print(np.linalg.norm(rhs))
-            print(z_step.shape)
-    
-            #Termination condition
-            if np.linalg.norm(rhs) < self.th_1:         # if smoothed system is solved for current tau
+
+            ############################
+            ### Termination condition
+            ############################
+            if np.linalg.norm(rhs) < self.th_1:              # if smoothed system is solved for current tau
                 if self.tau < self.th_2:                     # if tau is small enough
                     print('Solution found!')
                     break
                 else:
                     # decrease tau and continue
                     self.tau = self.tau*self.k_b
-                    print('oh yeah')
 
-            # alpha = self.line_search(z_step)
+
             x_step  = z_step[:nv,:]
             l_step  = z_step[nv:nv+ne,:]
             v_step  = z_step[nv+ne:nv+ne+ni,:]
             s_step  = z_step[nv+ne+ni:,:]
             
-            print(x_step.shape)
-            print(x_step.shape)
-            print(v_step.shape)
-            print(s_step.shape)
-            print('_____________---')
-            #line search part
-            alpha =1
-            max_ls =100
-            k_ls = 0.9
-            min_step = 1.0e-8
-            for j in range(max_ls):    
-                # Compute trial step
-                v_t = vk + alpha * v_step
-                s_t = sk + alpha * s_step
-                if all(v_t >= 0) and all(s_t >= 0):
-                    alpha = alpha
-                    break
-
-                
-                #Decrease alpha
-                alpha = alpha * k_ls
-                
-                # Terminiation condition
-                if np.linalg.norm(alpha*np.array([ v_step,s_step])) < min_step:
-                    print('Line search failed! Could not find dual feasible step.')
-                    self.sol = False
-                    return
-
+            alpha = self.line_search(z_step)
             
-            # actual step
-            #print(xk)
+
             xk  = xk + alpha*x_step
             lk  = lk + alpha*l_step
             vk  = vk + alpha*v_step
             sk  = sk + alpha*s_step
 
-            #print(xk)
-            #print(alpha)
+
             # save for later processing
             temp = np.vstack([xk, lk, vk, sk])
 
@@ -234,6 +204,8 @@ class interior_point_problem:
         if self.sol==False:
             print('Line search failed! Could not find dual feasible step.')
 
+
+        # SOSC condition check
         tol =1e-6
         self.sosc(h_e, Jg_e, Jh_e, vk, tol)
         #compute the reduced hessian
@@ -265,13 +237,9 @@ class interior_point_problem:
         ne = self.ne 
         ni = self.ni 
 
-        xk = self.xk 
-        lk = self.lk 
         vk = self.vk 
         sk = self.sk
 
-        x_step  = z_step[1:nv]
-        l_step  = z_step[nv+1:nv+ne]
         v_step  = z_step[nv+ne+1:nv+ne+ni]
         s_step  = z_step[nv+ne+ni+1:-1]
 
@@ -282,12 +250,11 @@ class interior_point_problem:
             if all(v_t >= 0) and all(s_t >= 0):
                 self.alpha = alpha
                 break
-
             
             #Decrease alpha
             alpha = alpha * k_ls
             
-            # Terminiation condition
+            # Termination condition
             if np.linalg.norm(alpha*np.array([ v_step,s_step])) < min_step:
                 print('Line search failed! Could not find dual feasible step.')
                 self.sol = False
@@ -296,7 +263,7 @@ class interior_point_problem:
 
     def sosc(self, h_e, Jg_e, Jh_e, vk, tol):
         if np.linalg.norm(h_e)<=tol:
-            Jg_tilde = np.vstack(Jg_e,Jh_e)  #augment the list of active constraints
+            self.Jg_tilde = np.vstack([Jg_e,Jh_e])  #augment the list of active constraints
             if vk >= tol:
                 print('h is strictly active')
             else:
